@@ -1,80 +1,87 @@
 # AI Usage Documentation
 
-## AI Tools Used
+This document describes how AI tools were used while building this project, the decisions that drove that usage, and how the resulting code was verified. The goal is an accurate record, not a minimal one.
 
-- **GitHub Copilot** (GPT-5.4 mini model) — original project scaffold: the legacy OCR pipeline, FastAPI structure, tests, Docker setup, and initial documentation.
-- **Claude (Anthropic)** — migrated extraction from OCR to a single Gemini-based call, fixed the resulting Docker/Compose/model-name issues found during real testing, added a landing-page UI with a live status/error-code reference, and rewrote this documentation set for consistency with the final architecture.
+## Tools Used
 
-## Purpose of the Tooling
+| Tool | Role |
+|---|---|
+| **GitHub Copilot** (GPT-5.4 mini) | Original scaffold: FastAPI structure, the legacy OCR/parser/translation pipeline, initial tests, Docker setup, and first-draft documentation. |
+| **Claude (Anthropic)** | Executed a set of architecture and engineering decisions made during development: migrating extraction from OCR to a single Gemini multimodal call, diagnosing and fixing runtime issues found in live testing, building the landing-page UI, and rewriting the documentation set to match the final architecture. |
 
-- Generate the initial project structure and legacy OCR/parser/translation pipeline (Copilot)
-- Replace OCR-based extraction with a single Gemini multimodal call that reads and translates both card images directly, keeping the legacy pipeline available as a fallback (Claude)
-- Diagnose and fix real runtime issues surfaced while testing against the live Gemini API — a malformed JSON response schema, a Docker Compose env-var precedence bug, a deprecated model name, and PowerShell-vs-bash command differences (Claude)
-- Build a small landing-page UI with a live `/health`/`/ready` status strip, a copyable `curl` example, and a full error-code reference table (Claude)
-- Keep README/ARCHITECTURE.md/AI_USAGE.md consistent with whichever pipeline is actually the default at any point (Copilot, then Claude)
+## Development Approach
 
-## Example Prompts
+AI tools were used as an implementation layer for decisions made during development, not as an autonomous source of architecture. The general pattern throughout the project was:
 
-- "I decided to remove the OCR-based approach and use an AI-based approach with Google Gemini 2.5 Flash — help me implement that" (start of the Gemini migration)
-- "help me to implement that" together with a functional-requirements spec, asking for a REST API, Docker setup, and structured JSON output
-- Iterative debugging prompts pasting the exact server error each time it changed, e.g. a Pydantic schema-validation error, a `.env` file-not-found error, a `403 PERMISSION_DENIED`, a `404` deprecated-model error, and a `503 UNAVAILABLE`
-- "what changes i need to make if i can manage a key from ai pro account"
-- "i want all 1,2,3,4" (referring to four proposed additions to the landing page: a curl example, an error-code table, a live status strip, and a pipeline diagram)
+1. Identify a problem or requirement (e.g. OCR translation quality wasn't good enough; a `docker compose up` run returned an unexpected error).
+2. Decide on the direction to take (e.g. replace OCR+regex+local-translation with a single vision-and-translation model call; keep the old pipeline available behind a config flag rather than deleting it).
+3. Direct the AI tool to implement that specific decision.
+4. Run the result against the real system — not just the assistant's own reasoning — and feed back what actually happened.
+5. Review the generated code before accepting it.
+
+That loop is the reason the project has a switchable `EXTRACTION_PROVIDER` setting, a specific nullable-field schema fix, and a pinned model alias — none of those were the AI's first draft; they came out of directing it toward a problem observed in real testing and having it correct course.
+
+## Representative Prompts
+
+The prompts below are paraphrased for clarity but preserve the actual intent and content of what was asked.
+
+| Goal | What was asked | Outcome |
+|---|---|---|
+| Replace the extraction pipeline | Directed a full migration from the OCR-based pipeline to a single Google Gemini multimodal call that reads and translates both card images in one pass, while keeping the original pipeline available as a fallback rather than deleting it. | `AIExtractionService` / `GeminiNIDExtractionService`, plus an `EXTRACTION_PROVIDER` config switch. |
+| Debug against the live API | Reported the exact server error at each stage of testing against the real Gemini API — a Pydantic schema-validation failure, a `.env`-not-found error, a `403 PERMISSION_DENIED`, a `404` deprecated-model error, and a `503 UNAVAILABLE` — and asked for the underlying cause and fix for each, not just a workaround. | Corrected JSON schema syntax, a `docker-compose.yml` env-loading bug, and a model name pinned to a stable alias (see below). |
+| Manage the API key correctly | Asked how to structure key management so a personal/paid Gemini API key could be used safely without ending up hardcoded or logged. | Confirmed `.env`-only key loading, `.gitignore` coverage, and no key in logs or the Docker image. |
+| Extend the landing page | Specified four concrete additions to the landing page — a copyable `curl` example, an error-code reference table, a live `/health`/`/ready` status strip, and a request/response pipeline diagram — then, after reviewing the result, asked for it to be removed for being visually cluttered and asked for alternatives instead. | Initial version shipped, then rolled back based on direct review; page kept to three focused sections. |
+| Redesign the landing page | Asked for a new visual direction described as "beautiful, modern, professional" rather than a generic template look. | A palette and layout grounded in the actual subject (Bangladesh NID cards) instead of a generic SaaS aesthetic, reviewed and approved before merging. |
+| Prepare the submission repo | Directed the setup of `.gitignore`, environment variable handling, and a clean, logically-grouped commit history suitable for review. | `.gitignore` added, secrets confirmed untracked, history organized into scoped commits. |
 
 ## AI-Assisted Code Sections
 
-The following areas were generated with AI assistance and then reviewed:
-
-- FastAPI application entrypoint and route wiring (Copilot; provider dependency-injection switch added by Claude)
-- Configuration, exception, and logging helpers (Copilot; Gemini-specific settings/exceptions added by Claude)
-- Hybrid PaddleOCR/Tesseract OCR pipeline, parser, and local transliteration service (Copilot; kept as the `EXTRACTION_PROVIDER=legacy` fallback)
-- `app/services/gemini_service.py` and `app/services/ai_extraction_service.py` — the Gemini extraction/translation call and its orchestrator (Claude)
-- Image validation and preprocessing pipeline (Copilot; reused unchanged by the Gemini path for validation)
-- Pydantic response models (Copilot)
-- Unit and integration tests, including the Gemini-path tests with a mocked SDK (Copilot for the legacy tests; Claude for the Gemini tests)
-- Docker, Compose, landing-page UI, and all project documentation (Copilot for the original scaffold; Claude for the Gemini migration, the fixes below, and this document)
+| Area | Origin |
+|---|---|
+| FastAPI entrypoint and route wiring | Copilot scaffold; provider dependency-injection switch added on direction |
+| Config, exception, and logging helpers | Copilot scaffold; Gemini-specific settings/exceptions added on direction |
+| Legacy OCR pipeline (PaddleOCR/Tesseract), parser, local transliteration | Copilot scaffold; retained as the `EXTRACTION_PROVIDER=legacy` fallback by decision, not by default |
+| `gemini_service.py` / `ai_extraction_service.py` | Implemented on direction to replace the OCR pipeline |
+| Image validation/preprocessing | Copilot scaffold; reused as-is by the Gemini path since the validation requirements didn't change |
+| Pydantic response models | Copilot scaffold |
+| Unit/integration tests, incl. mocked-Gemini-SDK tests | Copilot for the legacy suite; extended on direction for the Gemini path |
+| Docker, Compose, landing page, documentation | Copilot for the original scaffold; revised on direction for the Gemini migration and the fixes below |
 
 ## Review Process
 
-Each generated/modified section was checked for:
+Every generated or modified section was checked for:
 
-- Syntax correctness (`python -m py_compile` on every changed file before packaging)
-- Public response shape staying unchanged regardless of which backend produced it
-- Error-handling behavior (every new failure mode maps to a documented error code)
-- Privacy and logging safety (no API key or full personal data in logs)
-- Actual behavior against the live Gemini API, not just mocks — several real issues below were only caught this way
+- Syntax correctness (`python -m py_compile` on each changed file before packaging)
+- An unchanged public response shape regardless of which backend produced it
+- Every new failure mode mapping to a documented, meaningful error code
+- No API key or full personal data reaching logs
+- Actual behavior against the **live** Gemini API, not just mocks — the issues below were only caught this way
 
 ## Tests Used to Verify the Code
 
-- `pytest` unit tests: Bengali digit conversion, date parsing, label matching, translation, response schema, and — for the Gemini path — a mocked-SDK test covering successful extraction, partial extraction, malformed JSON, an empty response, and an API failure
-- Endpoint-level integration tests for health, readiness, upload validation errors, and the extraction endpoint under both a mocked legacy pipeline and a mocked Gemini service
-- Manual end-to-end runs against the real Gemini API via Docker (`docker compose up --build`), which is what actually surfaced the issues listed below
+- `pytest` unit tests: Bengali digit conversion, date parsing, label matching, translation, response schema, and a mocked-SDK Gemini test covering success, partial extraction, malformed JSON, an empty response, and an API failure
+- Endpoint-level integration tests for health, readiness, upload validation, and extraction under both a mocked legacy pipeline and a mocked Gemini service
+- Manual end-to-end runs against the real Gemini API via `docker compose up --build` — this is what surfaced the issues below; the mocked tests alone did not
 
-## Generated Code That Was Changed, and Why
+## Issues Found During Live Testing, and the Fixes
 
-- **Gemini response schema** — the first version used JSON Schema's `"type": ["string", "null"]` union syntax. Google's SDK validates the schema as its own OpenAPI-style `Schema` type, which rejected that; fixed by using `"type": "string", "nullable": true` instead. Caught by an actual `AI_EXTRACTION_FAILED` response during testing, not by the mocked unit tests (the mocks don't validate schema shape).
-- **`docker-compose.yml` env handling** — an earlier version force-overwrote `GEMINI_API_KEY` with `${GEMINI_API_KEY:-}` from the host shell, silently blanking out a key set in a real `.env` file. Simplified to load `.env` directly.
-- **Default `GEMINI_MODEL`** — `gemini-2.5-flash` returned a `404` because it had been cut off for new API keys/projects. Switched the default to `gemini-flash-latest`, an alias Google keeps pointed at its current stable Flash model, to avoid repeating this when models are renamed again.
-- **Image service was kept, not replaced** — corrupted/empty/wrong-type/too-small checks stayed exactly as Copilot originally wrote them; the Gemini path reuses them rather than duplicating validation logic.
-- **Provider made switchable, not a hard replacement** — `EXTRACTION_PROVIDER=gemini|legacy` was added instead of deleting the OCR pipeline outright, so the original code stays available and testable.
-
-## Why Those Changes Were Necessary
-
-- They keep the implementation aligned with the requested API contract regardless of which backend is active
-- They reflect what the live API actually returned during testing, not just what the SDK documentation implied
-- They make the failure modes predictable and documented (see the error-code table in `README.md`)
+- **Schema validation failure.** The first Gemini response schema used JSON Schema's `"type": ["string", "null"]` union syntax. Google's SDK validates against its own OpenAPI-style `Schema` type, which rejected that. Fixed by using `"type": "string", "nullable": true`. Caught by a real `AI_EXTRACTION_FAILED` response during a live run, not by the mocked unit tests, since the mocks don't validate schema shape.
+- **`docker-compose.yml` env-var precedence bug.** An earlier version wrote `${GEMINI_API_KEY:-}`, which let an empty host-shell variable silently overwrite a real key set in `.env`. Simplified to load `.env` directly via `env_file`.
+- **Deprecated model name.** The initial default, `gemini-2.5-flash`, returned a `404` for newer API keys/projects. Switched the default to `gemini-flash-latest`, an alias Google keeps pointed at its current stable Flash model, specifically to avoid repeating this when models are renamed again.
+- **Validation logic reused, not rewritten.** The corrupted/empty/wrong-type/too-small image checks were kept exactly as originally scaffolded; the Gemini path reuses them rather than duplicating logic, since the input-validation requirements didn't change with the new backend.
+- **Provider made switchable, not replaced outright.** `EXTRACTION_PROVIDER=gemini|legacy` was added instead of deleting the OCR pipeline, so the original implementation stays available and testable rather than discarded.
 
 ## Security and Privacy Checks
 
 - Uploaded images are not persisted by default
-- `GEMINI_API_KEY` is read from environment variables only, never logged, and never baked into the Docker image
-- `.env` is gitignored; only `.env.example` (no real secrets) is committed
-- **Note:** during development, a real Gemini API key was pasted into this AI conversation more than once while debugging. That key should be treated as compromised and rotated at https://aistudio.google.com/apikey before or immediately after submission — it must not be the key left in any submitted `.env` file.
-- API error payloads are free of stack traces and secrets
+- `GEMINI_API_KEY` is read from environment variables only — never logged, never baked into the Docker image
+- `.env` is gitignored; only `.env.example` (no real values) is committed
+- API error payloads contain no stack traces or secrets
+- **Note:** a real Gemini API key was pasted into an AI conversation more than once while debugging live issues during development. That key should be treated as compromised and rotated at https://aistudio.google.com/apikey — it must not be the key left in any submitted `.env` file.
 
-## Known Limitations of AI-Generated Suggestions
+## Known Limitations
 
-- The Gemini backend depends on an external API — quota, network, and transient `503` availability issues are outside this codebase's control
-- OCR quality (legacy backend) still depends on input image quality and the selected PaddleOCR recognition model
-- Bengali transliteration in the legacy backend is heuristic and not perfect for every proper noun; Gemini's translation is generally more natural but not independently verified against every possible NID layout
-- AI-suggested fixes were verified against the real API and real Docker runs during this project, but broader edge-case coverage (unusual card variants, non-standard fonts) has not been exhaustively tested
+- The Gemini backend depends on an external API; quota, network, and transient `503` availability are outside this codebase's control
+- The legacy OCR backend's accuracy still depends on input image quality and the selected PaddleOCR recognition model
+- The legacy backend's Bengali transliteration is heuristic and imperfect for some proper nouns; Gemini's translation is generally more natural but has not been independently verified against every possible NID layout
+- Fixes above were verified against the real API and real Docker runs, but exhaustive edge-case coverage (unusual card variants, non-standard fonts) has not been performed
