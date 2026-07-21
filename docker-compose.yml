@@ -1,0 +1,15 @@
+services:
+  nid-extractor:
+    build: .
+    image: bangladesh-nid-extractor:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      # Copy .env.example to .env and set GEMINI_API_KEY there before running.
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
