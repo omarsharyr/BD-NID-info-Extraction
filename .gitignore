@@ -1,0 +1,25 @@
+# Secrets — never commit your real .env (contains GEMINI_API_KEY)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+build/
+dist/
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
