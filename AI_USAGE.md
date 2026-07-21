@@ -16,10 +16,10 @@ AI tools were used as an implementation layer for decisions made during developm
 1. Identify a problem or requirement (e.g. OCR translation quality wasn't good enough; a `docker compose up` run returned an unexpected error).
 2. Decide on the direction to take (e.g. replace OCR+regex+local-translation with a single vision-and-translation model call; keep the old pipeline available behind a config flag rather than deleting it).
 3. Direct the AI tool to implement that specific decision.
-4. Run the result against the real system — not just the assistant's own reasoning — and feed back what actually happened.
+4. Run the result against the real system not just the assistant's own reasoning — and feed back what actually happened.
 5. Review the generated code before accepting it.
 
-That loop is the reason the project has a switchable `EXTRACTION_PROVIDER` setting, a specific nullable-field schema fix, and a pinned model alias — none of those were the AI's first draft; they came out of directing it toward a problem observed in real testing and having it correct course.
+That loop is the reason the project has a switchable `EXTRACTION_PROVIDER` setting, a specific nullable-field schema fix, and a pinned model alias none of those were the AI's first draft; they came out of directing it toward a problem observed in real testing and having it correct course.
 
 ## Representative Prompts
 
